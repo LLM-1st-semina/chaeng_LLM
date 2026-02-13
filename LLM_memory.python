@@ -1,0 +1,116 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
+# 1. 가상 VRAM 설정 (총 32블록, 8x4 구조)
+TOTAL_BLOCKS = 32
+BLOCKS_PER_ROW = 8
+ROWS = TOTAL_BLOCKS // BLOCKS_PER_ROW
+
+# 2. 시뮬레이션 데이터 (실제 데이터셋: 유저별 KV Cache 토큰)
+user_names = ['User A', 'User B', 'User C', 'User D', 'User E']
+# 각 유저가 생성한 실제 문장 데이터 (토큰화된 상태라고 가정)
+user_data = {
+    'User A': ['Attention', 'is', 'all'],
+    'User B': ['Paged', 'Memory', 'Management', 'is', 'Efficient', '!'],
+    'User C': ['LLM', 'Systems', 'VRAM', 'Optimization'],
+    'User D': ['Flash', 'Attention', 'and', 'KV', 'Caching'],
+    'User E': ['Let', 'us', 'run', 'vLLM']
+}
+user_colors = ['#FF9999', '#99FF99', '#9999FF', '#FFFF99', '#FFCC99']
+
+def run_simulation():
+    print("="*60)
+    print("   chaeng_own: PagedAttention Data Mapping Simulator")
+    print("="*60)
+    print("1. Legacy 모드 (연속 할당 - 데이터 낭비 발생)")
+    print("2. PagedAttention 모드 (동적 매핑 - 데이터 최적화)")
+    choice = input("\n실행할 모드 번호를 입력하세요: ")
+    
+    mode = "Legacy" if choice == '1' else "PagedAttention"
+    
+    plt.ion() 
+    fig, ax = plt.subplots(figsize=(14, 8))
+    
+    current_users = []
+    
+    # [데이터 로직] 물리적 메모리 저장소 및 매핑 테이블 초기화
+    # vram_physical: 실제 데이터가 담기는 물리적 공간
+    vram_physical = {} 
+    
+    for i in range(len(user_names)):
+        user_name = user_names[i]
+        tokens = user_data[user_name]
+        current_users.append((user_name, tokens))
+        
+        ax.clear()
+        
+        # 배경 (빈 VRAM 격자 그리기)
+        for r in range(ROWS):
+            for c in range(BLOCKS_PER_ROW):
+                ax.add_patch(plt.Rectangle((c, -r-1), 0.9, 0.9, fill=False, edgecolor='gray', alpha=0.2))
+
+        if mode == "Legacy":
+            ax.set_title(f"[{mode} Mode] - Static Reservation (Internal Fragmentation)", fontsize=15, color='red', pad=20)
+            
+            for u_idx, (name, tokens) in enumerate(current_users):
+                if u_idx >= ROWS:
+                    print(f"⚠️ {name} 할당 실패: 물리적 Row 부족 (OOM)")
+                    break
+                
+                # Legacy: 한 유저에게 무조건 한 줄(8칸) 고정 할당
+                for b_idx in range(8):
+                    # 실제 데이터가 있는 경우만 텍스트 표시
+                    if b_idx < len(tokens):
+                        ax.add_patch(plt.Rectangle((b_idx, -u_idx-1), 0.9, 0.9, color=user_colors[u_idx]))
+                        ax.text(b_idx+0.45, -u_idx-0.55, tokens[b_idx], ha='center', va='center', fontsize=8, fontweight='bold')
+                    else:
+                        # 낭비되는 공간 (Internal Fragmentation)
+                        ax.add_patch(plt.Rectangle((b_idx, -u_idx-1), 0.9, 0.9, color='lightgray', alpha=0.5, hatch='///'))
+            
+        else:
+            ax.set_title(f"[{mode} Mode] - Dynamic Block Mapping (Zero Waste)", fontsize=15, color='green', pad=20)
+            
+            # PagedAttention의 핵심: 비어있는 물리적 블록 리스트 생성
+            all_slots = [(r, c) for r in range(ROWS) for c in range(BLOCKS_PER_ROW)]
+            np.random.seed(42) # 시각적 이해를 위해 위치 고정 (실제로는 비어있는 곳 아무데나)
+            np.random.shuffle(all_slots)
+            
+            ptr = 0
+            for u_idx, (name, tokens) in enumerate(current_users):
+                print(f"\n[Mapping Table - {name}]")
+                for t_idx, token in enumerate(tokens):
+                    if ptr < TOTAL_BLOCKS:
+                        r, c = all_slots[ptr]
+                        
+                        # [데이터 로직] 물리 블록에 데이터(토큰) 저장
+                        vram_physical[(r, c)] = token
+                        
+                        # [시각화]
+                        ax.add_patch(plt.Rectangle((c, -r-1), 0.9, 0.9, color=user_colors[u_idx]))
+                        ax.text(c+0.45, -r-0.55, token, ha='center', va='center', fontsize=8, fontweight='bold')
+                        
+                        # 실제 매핑 정보 출력
+                        print(f"  Token '{token}' -> Physical Address: Row {r}, Col {c}")
+                        ptr += 1
+                    else:
+                        if t_idx == 0: print(f"⚠️ {name} 할당 실패: VRAM Full!")
+                        break
+
+        ax.set_xlim(-0.5, BLOCKS_PER_ROW)
+        ax.set_ylim(-ROWS-0.5, 0.5)
+        ax.axis('off')
+        
+        # 하단 설명 추가
+        ax.text(0, -ROWS-0.2, f"Total Blocks: {TOTAL_BLOCKS} | Used: {ptr if mode=='PagedAttention' else len(current_users)*8}", fontsize=10)
+        
+        plt.draw()
+        plt.pause(0.1)
+        
+        input(f"▶ {user_names[i]} 데이터 주입 완료. (Enter를 눌러 다음 유저 확인)")
+
+    print("\n✅ 시뮬레이션 완료. 모든 데이터가 가상 VRAM에 매핑되었습니다.")
+    plt.ioff()
+    plt.show()
+
+if __name__ == "__main__":
+    run_simulation()
